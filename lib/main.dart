@@ -484,6 +484,8 @@ class _WebViewScreenState extends State<WebViewScreen> {
                 onReceivedError: (controller, request, error) {
                   _pullToRefreshController.endRefreshing();
                   if (request.isForMainFrame ?? false) {
+                    // Load a blank page to hide the default error page and the URL.
+                    controller.loadData(data: '<html><body></body></html>');
                     setState(() {
                       _isError = true;
                     });
@@ -492,6 +494,8 @@ class _WebViewScreenState extends State<WebViewScreen> {
                 onReceivedHttpError: (controller, request, errorResponse) {
                   _pullToRefreshController.endRefreshing();
                   if (request.isForMainFrame ?? false) {
+                    // Load a blank page to hide the default error page and the URL.
+                    controller.loadData(data: '<html><body></body></html>');
                     setState(() {
                       _isError = true;
                     });
