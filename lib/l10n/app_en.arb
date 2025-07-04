@@ -34,5 +34,10 @@
     "delete": "Delete",
     "deleteFileConfirmationTitle": "Delete File",
     "deleteFileConfirmationContent": "Are you sure you want to permanently delete this file?",
-    "folderOpenError": "Could not open the folder."
+    "folderOpenError": "Could not open the folder.",
+    "back": "Back",
+    "accessDeniedTitle": "Access Denied",
+    "accessDeniedContent": "You cannot access this page",
+    "applySettingsPrompt": "Press refresh to apply changes from settings",
+    "refresh": "Refresh"
 } 

@@ -7,11 +7,13 @@ import 'settings.dart';
 class AppDrawer extends StatelessWidget {
   final VoidCallback onGoHome;
   final VoidCallback onReload;
+  final VoidCallback onNavigateToSettings;
 
   const AppDrawer({
     super.key,
     required this.onGoHome,
     required this.onReload,
+    required this.onNavigateToSettings,
   });
 
   @override
@@ -81,10 +83,7 @@ class AppDrawer extends StatelessWidget {
             title: Text(AppLocalizations.of(context)!.settings),
             onTap: () {
               Navigator.pop(context); // Close the drawer
-              Navigator.push(
-                context,
-                MaterialPageRoute(builder: (context) => const SettingsPage()),
-              );
+              onNavigateToSettings();
             },
           ),
         ],

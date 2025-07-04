@@ -67,16 +67,6 @@ class _SettingsPageState extends State<SettingsPage> {
                 style: const TextStyle(fontWeight: FontWeight.bold)),
           ),
           RadioListTile<ThemeMode>(
-            title: Text(AppLocalizations.of(context)!.system),
-            value: ThemeMode.system,
-            groupValue: settingsProvider.themeMode,
-            onChanged: (ThemeMode? value) {
-              if (value != null) {
-                settingsProvider.setThemeMode(value);
-              }
-            },
-          ),
-          RadioListTile<ThemeMode>(
             title: Text(AppLocalizations.of(context)!.light),
             value: ThemeMode.light,
             groupValue: settingsProvider.themeMode,

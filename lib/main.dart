@@ -11,9 +11,14 @@ import 'package:provider/provider.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_gen/gen_l10n/app_localizations.dart';
 import 'package:path/path.dart' as p;
+import 'package:flutter/scheduler.dart';
+import 'dart:convert';
+import 'package:url_launcher/url_launcher.dart';
 
 import 'settings_provider.dart';
 import 'app_drawer.dart';
+import 'config.dart';
+import 'settings.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
@@ -67,10 +72,14 @@ class _WebViewScreenState extends State<WebViewScreen> {
   InAppWebViewController? _webViewController;
   late PullToRefreshController _pullToRefreshController;
 
-  final String _url = 'https://b3d5-1-54-226-63.ngrok-free.app';
+  final String _url = baseUrl;
 
   bool _isError = false;
   double _progress = 0;
+  bool _canGoBack = false;
+  bool _isAccessDenied = false;
+  bool _onLoginPage = false;
+  bool _isLoggingOut = false;
 
   bool _isDownloading = false;
   double _downloadProgress = 0.0;
@@ -201,6 +210,18 @@ class _WebViewScreenState extends State<WebViewScreen> {
     }
   }
 
+  Future<void> _goBack() async {
+    // Hide overlay screens
+    setState(() {
+      _isError = false;
+      _isAccessDenied = false;
+    });
+
+    if (_webViewController != null && await _webViewController!.canGoBack()) {
+      _webViewController!.goBack();
+    }
+  }
+
   Future<void> _retry() async {
     setState(() {
       _isError = false;
@@ -214,11 +235,128 @@ class _WebViewScreenState extends State<WebViewScreen> {
   Future<void> _goToHome() async {
     setState(() {
       _isError = false;
+      _isAccessDenied = false;
     });
     if (_webViewController != null) {
       await _webViewController!
           .loadUrl(urlRequest: URLRequest(url: WebUri(_url)));
     }
+  }
+
+  Future<void> _syncThemeWithWebView() async {
+    if (_webViewController == null) return;
+
+    final settingsProvider =
+        Provider.of<SettingsProvider>(context, listen: false);
+    final themeMode = settingsProvider.themeMode;
+
+    final isDarkMode = themeMode == ThemeMode.dark;
+
+    final script = '''
+      try {
+        let currentSettings = JSON.parse(localStorage.getItem('themeSettings')) || {};
+        let newSettings = {
+            ...currentSettings,
+            isDarkMode: $isDarkMode,
+            isAutoMode: false,
+            manualOverride: true
+        };
+        localStorage.setItem('themeSettings', JSON.stringify(newSettings));
+      } catch (e) {
+        console.error('Failed to sync theme settings:', e);
+      }
+    ''';
+
+    await _webViewController!.evaluateJavascript(source: script);
+  }
+
+  Future<void> _syncThemeFromWebView() async {
+    if (_webViewController == null) return;
+
+    try {
+      final result = await _webViewController!
+          .evaluateJavascript(source: "localStorage.getItem('themeSettings');");
+
+      if (result != null && result is String && result.isNotEmpty) {
+        final settingsJson = json.decode(result);
+
+        final isDarkMode = settingsJson['isDarkMode'] as bool? ?? false;
+
+        final newThemeMode = isDarkMode ? ThemeMode.dark : ThemeMode.light;
+
+        final settingsProvider =
+            Provider.of<SettingsProvider>(context, listen: false);
+        if (newThemeMode != settingsProvider.themeMode) {
+          settingsProvider.setThemeMode(newThemeMode);
+        }
+      }
+    } catch (e) {
+      debugPrint('Failed to sync theme from webview: $e');
+    }
+  }
+
+  Future<void> _syncLangFromWebView() async {
+    if (_webViewController == null) return;
+
+    try {
+      // evaluateJavascript can return a JSON-encoded string on Android ('"vi"')
+      // and a raw string on iOS ('vi'). We need to handle both.
+      final result = await _webViewController!
+          .evaluateJavascript(source: "localStorage.getItem('portal_locale');");
+
+      if (result != null && result is String && result.isNotEmpty) {
+        String portalLocale = result;
+        if (Platform.isAndroid &&
+            portalLocale.startsWith('"') &&
+            portalLocale.endsWith('"')) {
+          portalLocale = portalLocale.substring(1, portalLocale.length - 1);
+        }
+
+        final settingsProvider =
+            Provider.of<SettingsProvider>(context, listen: false);
+        final currentAppLocaleCode = settingsProvider.locale.languageCode;
+
+        if (portalLocale != currentAppLocaleCode) {
+          final newLocale = Locale(portalLocale);
+          if (L10n.all.contains(newLocale)) {
+            settingsProvider.setLocale(newLocale, syncToWebView: false);
+          }
+        }
+      }
+    } catch (e) {
+      debugPrint('Failed to sync language from webview: $e');
+    }
+  }
+
+  Future<void> _navigateToSettings() async {
+    final settingsProvider =
+        Provider.of<SettingsProvider>(context, listen: false);
+    settingsProvider.clearSettingsChangedFlag();
+
+    await Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (context) => const SettingsPage(),
+      ),
+    );
+
+    if (settingsProvider.settingsChanged && mounted) {
+      await _syncThemeWithWebView();
+      _showRefreshToast();
+    }
+  }
+
+  void _showRefreshToast() {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(AppLocalizations.of(context)!.applySettingsPrompt),
+        action: SnackBarAction(
+          label: AppLocalizations.of(context)!.refresh.toUpperCase(),
+          onPressed: () {
+            _webViewController?.reload();
+          },
+        ),
+      ),
+    );
   }
 
   @override
@@ -256,6 +394,7 @@ class _WebViewScreenState extends State<WebViewScreen> {
         drawer: AppDrawer(
           onGoHome: _goToHome,
           onReload: () => _webViewController?.reload(),
+          onNavigateToSettings: _navigateToSettings,
         ),
         body: SafeArea(
           child: Stack(
@@ -265,17 +404,52 @@ class _WebViewScreenState extends State<WebViewScreen> {
                 pullToRefreshController: _pullToRefreshController,
                 onWebViewCreated: (controller) {
                   _webViewController = controller;
+
+                  controller.addJavaScriptHandler(
+                      handlerName: 'themeChanged',
+                      callback: (args) {
+                        _syncThemeFromWebView();
+                      });
                 },
                 onLoadStart: (controller, url) {
+                  // When a logout is in progress and we are being redirected to the login page,
+                  // clear history at the earliest possible moment to prevent user from going back.
+                  if (_isLoggingOut &&
+                      url != null &&
+                      url.path.endsWith('/login')) {
+                    controller.clearHistory();
+                    setState(() {
+                      _isLoggingOut = false; // Reset the flag
+                    });
+                  }
+
                   setState(() {
                     _isError = false;
+                    _isAccessDenied = false;
                     _progress = 0;
                   });
                 },
-                onLoadStop: (controller, url) {
+                onLoadStop: (controller, url) async {
                   _pullToRefreshController.endRefreshing();
+
+                  if (url != null) {
+                    // If we just navigated away from the login page (successful login), clear the history.
+                    if (_onLoginPage && !url.path.endsWith('/login')) {
+                      await _webViewController?.clearHistory();
+                    }
+                    // Update the flag for the next navigation event.
+                    _onLoginPage = url.path.endsWith('/login');
+                  }
+
+                  // Sync FROM webview first, as it's the source of truth on page load.
+                  await _syncThemeFromWebView();
+                  await _syncLangFromWebView();
+
+                  final canGoBack =
+                      await _webViewController?.canGoBack() ?? false;
                   setState(() {
                     _progress = 1.0;
+                    _canGoBack = canGoBack;
                   });
                 },
                 onProgressChanged: (controller, progress) {
@@ -302,6 +476,36 @@ class _WebViewScreenState extends State<WebViewScreen> {
                       _isError = true;
                     });
                   }
+                },
+                shouldOverrideUrlLoading: (controller, navigationAction) async {
+                  final request = navigationAction.request;
+                  final requestedUri = request.url;
+
+                  if (requestedUri != null && requestedUri.scheme == 'tel') {
+                    if (await canLaunchUrl(requestedUri)) {
+                      await launchUrl(requestedUri);
+                    }
+                    return NavigationActionPolicy.CANCEL;
+                  }
+
+                  if (request.method == "POST" &&
+                      requestedUri != null &&
+                      requestedUri.path.endsWith('/logout')) {
+                    setState(() {
+                      _isLoggingOut = true;
+                    });
+                  }
+
+                  final allowedHost = Uri.parse(baseUrl).host;
+
+                  if (requestedUri != null &&
+                      requestedUri.host != allowedHost) {
+                    setState(() {
+                      _isAccessDenied = true;
+                    });
+                    return NavigationActionPolicy.CANCEL;
+                  }
+                  return NavigationActionPolicy.ALLOW;
                 },
                 onDownloadStartRequest:
                     (controller, downloadStartRequest) async {
@@ -370,6 +574,68 @@ class _WebViewScreenState extends State<WebViewScreen> {
                             onPressed: _retry,
                             icon: const Icon(Icons.refresh),
                             label: Text(AppLocalizations.of(context)!.retry),
+                            style: ElevatedButton.styleFrom(
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 32, vertical: 12),
+                            ),
+                          ),
+                          const SizedBox(height: 12),
+                          if (_canGoBack)
+                            Padding(
+                              padding: const EdgeInsets.only(bottom: 12.0),
+                              child: ElevatedButton.icon(
+                                onPressed: _goBack,
+                                icon: const Icon(Icons.arrow_back),
+                                label: Text(AppLocalizations.of(context)!.back),
+                                style: ElevatedButton.styleFrom(
+                                  padding: const EdgeInsets.symmetric(
+                                      horizontal: 32, vertical: 12),
+                                ),
+                              ),
+                            ),
+                          TextButton(
+                            onPressed: _goToHome,
+                            child: Text(AppLocalizations.of(context)!.home),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              if (_isAccessDenied)
+                Container(
+                  color: Theme.of(context).scaffoldBackgroundColor,
+                  child: Center(
+                    child: Padding(
+                      padding: const EdgeInsets.all(16.0),
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          const Icon(
+                            Icons.block_flipped,
+                            color: Colors.red,
+                            size: 80,
+                          ),
+                          const SizedBox(height: 24),
+                          Text(
+                            AppLocalizations.of(context)!.accessDeniedTitle,
+                            style: const TextStyle(
+                              fontSize: 20,
+                              fontWeight: FontWeight.bold,
+                            ),
+                            textAlign: TextAlign.center,
+                          ),
+                          const SizedBox(height: 8),
+                          Text(
+                            AppLocalizations.of(context)!.accessDeniedContent,
+                            style: const TextStyle(fontSize: 16),
+                            textAlign: TextAlign.center,
+                          ),
+                          const SizedBox(height: 32),
+                          ElevatedButton.icon(
+                            onPressed: _goBack,
+                            icon: const Icon(Icons.arrow_back),
+                            label: Text(AppLocalizations.of(context)!.back),
                             style: ElevatedButton.styleFrom(
                               padding: const EdgeInsets.symmetric(
                                   horizontal: 32, vertical: 12),

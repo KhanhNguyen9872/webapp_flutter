@@ -34,5 +34,10 @@
     "delete": "Xóa",
     "deleteFileConfirmationTitle": "Xóa Tệp",
     "deleteFileConfirmationContent": "Bạn có chắc chắn muốn xóa vĩnh viễn tệp này không?",
-    "folderOpenError": "Không thể mở thư mục."
+    "folderOpenError": "Không thể mở thư mục.",
+    "back": "Quay lại",
+    "accessDeniedTitle": "Không thể truy cập trang này",
+    "accessDeniedContent": "Bạn không thể truy cập trang này",
+    "applySettingsPrompt": "Hãy nhấn làm mới để áp dụng thay đổi từ cài đặt",
+    "refresh": "Làm mới"
 } 
