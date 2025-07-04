@@ -12,14 +12,17 @@ class SettingsProvider with ChangeNotifier {
 
   Locale _locale = defaultLocale;
   ThemeMode _themeMode = defaultThemeMode;
-  bool _settingsChanged = false;
+  bool _languageChanged = false;
+  bool _themeChanged = false;
 
   Locale get locale => _locale;
   ThemeMode get themeMode => _themeMode;
-  bool get settingsChanged => _settingsChanged;
+  bool get languageChanged => _languageChanged;
+  bool get themeChanged => _themeChanged;
 
-  void clearSettingsChangedFlag() {
-    _settingsChanged = false;
+  void clearChangeFlags() {
+    _languageChanged = false;
+    _themeChanged = false;
   }
 
   SettingsProvider() {
@@ -29,7 +32,7 @@ class SettingsProvider with ChangeNotifier {
   void setLocale(Locale locale, {bool syncToWebView = true}) {
     if (!L10n.all.contains(locale) || _locale == locale) return;
     _locale = locale;
-    _settingsChanged = true;
+    _languageChanged = true;
     _saveSettings();
     notifyListeners();
     if (syncToWebView) {
@@ -40,7 +43,7 @@ class SettingsProvider with ChangeNotifier {
   void setThemeMode(ThemeMode themeMode) {
     if (_themeMode == themeMode) return;
     _themeMode = themeMode;
-    _settingsChanged = true;
+    _themeChanged = true;
     _saveSettings();
     notifyListeners();
   }

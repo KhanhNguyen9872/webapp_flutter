@@ -295,6 +295,22 @@ class _WebViewScreenState extends State<WebViewScreen> {
     }
   }
 
+  Future<void> _applyThemeToWebView() async {
+    if (_webViewController == null) return;
+
+    final settingsProvider =
+        Provider.of<SettingsProvider>(context, listen: false);
+    final isDarkMode = settingsProvider.themeMode == ThemeMode.dark;
+
+    // Call the specific function on the website to apply the theme.
+    final script = '''
+      if (typeof window.enableDarkMode === 'function') {
+        window.enableDarkMode($isDarkMode);
+      }
+    ''';
+    await _webViewController!.evaluateJavascript(source: script);
+  }
+
   Future<void> _syncLangFromWebView() async {
     if (_webViewController == null) return;
 
@@ -331,7 +347,7 @@ class _WebViewScreenState extends State<WebViewScreen> {
   Future<void> _navigateToSettings() async {
     final settingsProvider =
         Provider.of<SettingsProvider>(context, listen: false);
-    settingsProvider.clearSettingsChangedFlag();
+    settingsProvider.clearChangeFlags();
 
     await Navigator.of(context).push(
       MaterialPageRoute(
@@ -339,9 +355,13 @@ class _WebViewScreenState extends State<WebViewScreen> {
       ),
     );
 
-    if (settingsProvider.settingsChanged && mounted) {
-      await _syncThemeWithWebView();
-      _showRefreshToast();
+    if (mounted) {
+      if (settingsProvider.themeChanged) {
+        await _applyThemeToWebView();
+      }
+      if (settingsProvider.languageChanged) {
+        _showRefreshToast();
+      }
     }
   }
 
