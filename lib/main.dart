@@ -77,7 +77,6 @@ class _WebViewScreenState extends State<WebViewScreen> {
   bool _isError = false;
   double _progress = 0;
   bool _canGoBack = false;
-  bool _isAccessDenied = false;
   bool _onLoginPage = false;
   bool _isLoggingOut = false;
 
@@ -214,7 +213,6 @@ class _WebViewScreenState extends State<WebViewScreen> {
     // Hide overlay screens
     setState(() {
       _isError = false;
-      _isAccessDenied = false;
     });
 
     if (_webViewController != null && await _webViewController!.canGoBack()) {
@@ -235,7 +233,6 @@ class _WebViewScreenState extends State<WebViewScreen> {
   Future<void> _goToHome() async {
     setState(() {
       _isError = false;
-      _isAccessDenied = false;
     });
     if (_webViewController != null) {
       await _webViewController!
@@ -445,7 +442,6 @@ class _WebViewScreenState extends State<WebViewScreen> {
 
                   setState(() {
                     _isError = false;
-                    _isAccessDenied = false;
                     _progress = 0;
                   });
                 },
@@ -524,9 +520,10 @@ class _WebViewScreenState extends State<WebViewScreen> {
 
                   if (requestedUri != null &&
                       requestedUri.host != allowedHost) {
-                    setState(() {
-                      _isAccessDenied = true;
-                    });
+                    if (await canLaunchUrl(requestedUri)) {
+                      await launchUrl(requestedUri,
+                          mode: LaunchMode.externalApplication);
+                    }
                     return NavigationActionPolicy.CANCEL;
                   }
                   return NavigationActionPolicy.ALLOW;
@@ -617,55 +614,6 @@ class _WebViewScreenState extends State<WebViewScreen> {
                                 ),
                               ),
                             ),
-                          TextButton(
-                            onPressed: _goToHome,
-                            child: Text(AppLocalizations.of(context)!.home),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                ),
-              if (_isAccessDenied)
-                Container(
-                  color: Theme.of(context).scaffoldBackgroundColor,
-                  child: Center(
-                    child: Padding(
-                      padding: const EdgeInsets.all(16.0),
-                      child: Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          const Icon(
-                            Icons.block_flipped,
-                            color: Colors.red,
-                            size: 80,
-                          ),
-                          const SizedBox(height: 24),
-                          Text(
-                            AppLocalizations.of(context)!.accessDeniedTitle,
-                            style: const TextStyle(
-                              fontSize: 20,
-                              fontWeight: FontWeight.bold,
-                            ),
-                            textAlign: TextAlign.center,
-                          ),
-                          const SizedBox(height: 8),
-                          Text(
-                            AppLocalizations.of(context)!.accessDeniedContent,
-                            style: const TextStyle(fontSize: 16),
-                            textAlign: TextAlign.center,
-                          ),
-                          const SizedBox(height: 32),
-                          ElevatedButton.icon(
-                            onPressed: _goBack,
-                            icon: const Icon(Icons.arrow_back),
-                            label: Text(AppLocalizations.of(context)!.back),
-                            style: ElevatedButton.styleFrom(
-                              padding: const EdgeInsets.symmetric(
-                                  horizontal: 32, vertical: 12),
-                            ),
-                          ),
-                          const SizedBox(height: 12),
                           TextButton(
                             onPressed: _goToHome,
                             child: Text(AppLocalizations.of(context)!.home),
